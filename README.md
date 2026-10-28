@@ -2,7 +2,10 @@
 
 Builds training labels for the call summarization model with as little hallucination as possible. A GPT model never writes the summary directly. It fills a record in which every fact carries the transcript turn and a verbatim quote it came from. Code checks every quote, a program writes the summary from the record using fixed sentences, and a second model checks each sentence against the transcript. Labels that fail are regenerated once, then rejected or sent to a person.
 
-Design: [Ground Truth Generation Design](https://claude.ai/artifact/5768iTMWsF25Z7DFVxkFFe).
+Design docs:
+
+- [Ground truth generation design](docs/ground-truth-generation-design.md) ([live doc](https://claude.ai/artifact/5768iTMWsF25Z7DFVxkFFe))
+- [Model selection and training plan](docs/model-selection-and-training-plan.md) ([live doc](https://claude.ai/artifact/VrSjCNc1Whhonu5ggsAAYm)): the model that will train on these labels
 
 ```
 prepare ──> label ──> report
