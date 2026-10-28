@@ -161,32 +161,59 @@ The judge (`JUDGE_MODEL`) must be a different model from the labeller, and the c
 
 ### Record schema
 
+The record is defined in `src/gtgen/schema.py` (`LABEL_RECORD`) and sent to the API as a strict JSON schema. A filled example, shortened:
+
 ```json
 {
-  "call_status": "complete | incomplete | transfer_out_before_reason",
-  "transferred_in_from": null,
-  "caller_type": "patient | patients_representative | healthcare_provider | manufacturers_representative | third_party",
+  "call_status": "complete",
+  "status_evidence": {"turns": [], "quote": null},
+  "caller_type": "patient",
+  "transfer_in": {"party": null, "turns": [], "quote": null},
   "issues": [
     {
-      "device_type": "external | implant | implant_and_external",
-      "device_ids": [{"name": "Controller", "model": "97745", "serial": "NLD107917N", "turns": ["T24", "T25"], "quote": "n l d one zero seven nine"}],
-      "reason": {"text": "...", "turns": ["T8"], "quote": "..."},
-      "onset": {"text": "...", "turns": ["T16"], "quote": "..."},
-      "circumstances": {"asked": true, "text": "...", "turns": [], "quote": "..."},
-      "troubleshooting": [{"step": "...", "result": "...", "turns": [], "quote": "..."}],
-      "outcome": "resolved | not_resolved | not_possible | none_needed | transferred_out",
-      "outcome_reason": null,
-      "transfer_team": null,
-      "actions": [{"type": "replacement | redirected_hcp | rep_informed | call_back | record_update", "detail": "...", "turns": [], "quote": "<the agent's words>"}]
+      "device_type": "external",
+      "device_ids": [
+        {"name": "Controller", "model": "97745", "serial": "NLD107917N", "turns": ["T24", "T25"], "quote": "n l d one zero seven nine one seven n as in nancy"}
+      ],
+      "reason": {"text": "that the patient could not charge their implanted neurostimulator", "turns": ["T8"], "quote": "..."},
+      "onset": {"text": "The patient said the issue started at least four or five months ago.", "turns": ["T16"], "quote": "..."},
+      "circumstances": {"status": "not_asked", "text": null, "turns": [], "quote": null},
+      "troubleshooting": [
+        {"sentence": "Agent walked the patient through removing the battery pack and restarting the controller.", "turns": ["T30"], "quote": "..."}
+      ],
+      "outcome": "not_resolved",
+      "outcome_reason": {"text": null, "turns": [], "quote": null},
+      "transfer_out": {"team": null, "turns": [], "quote": null},
+      "actions": [
+        {"type": "replacement", "detail": "recharger", "turns": ["T41"], "quote": "<the agent's words>"}
+      ]
     }
   ],
-  "other_statements": [{"text": "...", "turns": [], "quote": "..."}],
-  "unreadable_share": "low | medium | high",
-  "labeller_notes": "anything uncertain, for the reviewer"
+  "other_statements": [
+    {"sentence": "The patient mentioned they had texted their representative on Monday without a response.", "turns": ["T44"], "quote": "..."}
+  ],
+  "unreadable_share": "low",
+  "labeller_notes": ""
 }
 ```
 
-Every optional field is `null` or empty when the transcript doesn't state it. An empty field is a correct answer, not a failure.
+| Field | Allowed values | Notes |
+| --- | --- | --- |
+| `call_status` | `complete` · `incomplete` · `transfer_out_before_reason` | Not `complete` means `issues` is empty |
+| `status_evidence` | turns + quote | The agent's transfer words for `transfer_out_before_reason` |
+| `caller_type` | `patient` · `patients_representative` · `healthcare_provider` · `manufacturers_representative` · `third_party` |  |
+| `transfer_in` | party + turns + quote | A third party who handed the caller over; `party` null otherwise |
+| `issues[].device_type` | `external` · `implant` · `implant_and_external` | One issue per distinct problem |
+| `issues[].device_ids[]` | name, model (or null), serial, turns, quote | Only IDs read in full on the call |
+| `issues[].reason`, `onset`, `outcome_reason` | text + turns + quote | `text` null when not stated |
+| `issues[].circumstances.status` | `asked` · `not_asked` · `not_applicable` | `text` filled only when `asked` |
+| `issues[].troubleshooting[]`, `other_statements[]` | sentence + turns + quote | One past-tense sentence each |
+| `issues[].outcome` | `resolved` · `not_resolved` · `not_possible` · `none_needed` · `transferred_out` | `transferred_out` uses `transfer_out.team` |
+| `issues[].actions[].type` | `replacement` · `redirected_hcp` · `rep_informed` · `call_back` · `record_update` | The quote must be the agent's own turn |
+| `unreadable_share` | `low` · `medium` · `high` | `high` sends the call to review |
+| `labeller_notes` | free text | Doubts for the reviewer; empty if none |
+
+Strict mode requires every field in every record. A fact the transcript does not state is `text: null`, `turns: []`, `quote: null`, and an empty list is `[]`. An empty field is a correct answer, not a failure. The judge and closed-set passes have their own schemas in the same file (`JUDGE_RESULT`, `CLOSED_SET_RESULT`).
 
 ### Prompt design
 
