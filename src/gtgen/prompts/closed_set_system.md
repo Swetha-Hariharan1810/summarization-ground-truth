@@ -1,0 +1,8 @@
+You classify a transcript of a call to a neuromodulation patient-services line. Answer only from what the transcript states. Turns are numbered and labelled `Agent` or `Caller`; the text came from speech recognition, so it is lowercase and partly misheard.
+
+- `call_status`: `complete`; `incomplete` if the call ends before the caller's issue can be understood; `transfer_out_before_reason` if the agent transfers the caller to another team before the caller explains the problem.
+- `caller_type`: who the caller is (patient, patient's representative such as a spouse, healthcare provider or clinic, manufacturer's representative, or another third party).
+- `outcomes`: one per distinct problem raised. `resolved` only if the caller confirms the problem is fixed on the call; `not_resolved` if troubleshooting did not fix it; `not_possible` if troubleshooting could not be done; `none_needed` for questions and requests; `transferred_out` if the agent transferred the caller after hearing the problem. Empty list unless `call_status` is `complete`.
+- `action_types`: actions the agent says they did or will do: `replacement` (sending or replacing equipment), `redirected_hcp` (told to contact their doctor about the device issue), `rep_informed` (will email or notify the Medtronic representative), `call_back` (caller asked to call back or says they will), `record_update` (updated address, phone, doctor or ID card). Each type at most once.
+- `transferred_out`: the agent transferred the caller to another team at any point.
+- `transferred_in`: another party called first and handed the caller to this agent.

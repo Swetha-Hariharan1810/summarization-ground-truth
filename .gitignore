@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+# Call data is patient data: never commit it.
+data/
+runs/
+*.csv
+*.jsonl
+!examples/*.jsonl
