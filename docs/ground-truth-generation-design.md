@@ -144,19 +144,20 @@ Compared with the old label: "redirected patient to healthcare plan" is gone, be
 
 ## Generation step
 
-Claude does not write the summary. It fills a JSON record in which every free-text fact carries the turn number and a verbatim quote it came from. A script turns the record into the summary.
+The GPT labeller does not write the summary. It fills a JSON record in which every free-text fact carries the turn number and a verbatim quote it came from. A script turns the record into the summary.
 
 ### Model and settings
 
 | Setting | Choice | Reason |
 | --- | --- | --- |
-| Labeller | `claude-opus-5-5` (pilot against `claude-sonnet-5-5`) | Labels set the ceiling for the student model; pick on measured quality |
-| Effort | `high` (pilot `medium` too) | Long, noisy transcripts reward careful reading |
-| Platform | Amazon Bedrock, batch inference | PHI stays in your AWS account; batch halves the price |
-| Output | JSON matching the schema below | Validated by code before anything else runs |
-| Caching | System prompt (spec + examples) cached | Same for every call; most input tokens become cache reads |
+| Provider | OpenAI API or Azure OpenAI (`LLM_PROVIDER`); key and model names come from `.env` | Azure OpenAI keeps the data under your Microsoft agreement and BAA |
+| Labeller | `LABELLER_MODEL`: the strongest GPT reasoning model on your account, piloted against the next tier down | Labels set the ceiling for the student model; pick on measured quality |
+| Reasoning effort | `LABELLER_REASONING_EFFORT=high` (pilot `medium` too) | Long, noisy transcripts reward careful reading |
+| Output | Structured outputs: `response_format` with a strict JSON schema | The API returns only schema-valid JSON; code still validates it |
+| Calls | Synchronous, `MAX_CONCURRENCY` in parallel (default 4); the run is resumable | A provider batch API is not used yet; it would cut cost roughly in half |
+| Caching | The system prompt (spec and examples) is identical on every call and comes first | Providers that cache repeated prompt prefixes bill most input tokens at the cached rate |
 
-The judge model in section 6 is a different model from the labeller, so the same blind spots don't pass twice.
+The judge (`JUDGE_MODEL`) must be a different model from the labeller, and the config refuses to start otherwise, so the same blind spots don't pass twice. The closed-set pass (`CLOSED_SET_MODEL`) can be a cheaper model.
 
 ### Record schema
 
@@ -286,41 +287,39 @@ The same metrics, scored against the gold set, later decide which student model 
 
 ## Compliance, infrastructure and cost
 
-The whole pipeline runs inside your AWS account; transcripts never leave it except to Bedrock in the same account.
+Transcripts leave your environment only to the GPT provider set in `.env`. Azure OpenAI in your own Azure subscription is the preferred route, covered by your Microsoft agreement and BAA.
 
 ### Compliance
 
-- Confirm with compliance that Bedrock is covered by your AWS BAA for this data, and which region to use. Check that the chosen Claude models are offered there.
-- S3 buckets encrypted with KMS, access limited to the labelling role. Logs hold call IDs and check results only, never transcript text.
-- SME reviewers work in a tool hosted in the same account (for example self-hosted Label Studio), not in spreadsheets sent by email.
+- Confirm with compliance that the provider is covered by a BAA for this data: Azure OpenAI under your Microsoft agreement, or the OpenAI API under a BAA with OpenAI. Check the data-retention settings, the region the deployment runs in, and that the chosen models are deployed there.
+- The API key lives only in `.env`, which git ignores. Prepared files, labels and exports (`runs/`, `data/`) are git-ignored too; keep them on encrypted storage with access limited to the labelling team. Logs hold call IDs and check results only, never transcript text.
+- SME review sheets from `gtgen review-sample` contain transcripts. Share them only through approved storage or a review tool hosted in your environment, never by email.
 
 ### Pipeline components
 
 | Step | Component | Output |
 | --- | --- | --- |
-| Extract | Query or export by date window | Raw calls in S3 |
-| Prepare | Python job using the service's preprocessing | Numbered transcripts, JSONL |
-| Label | Bedrock batch inference job | Records, JSONL |
-| Check | Python job: checks 1 to 3, render, queue judge and closed-set passes | Pass, retry or reject per call |
-| Judge | Bedrock batch inference job | Sentence verdicts |
-| Review | Review tool | SME verdicts, gold summaries |
-| Publish | Versioned dataset in S3 | Train, validation, test, gold, plus a manifest |
+| Extract | Query or export by date window | Calls CSV with `call_id`, `date`, `transcript` |
+| Prepare | `gtgen prepare`: the service's preprocessing, date window, splits | `prepared.jsonl` |
+| Label | `gtgen label`: labeller, checks 1 to 3, render, judge, closed-set pass, one retry | `labels.jsonl`, one status per call |
+| Report | `gtgen report` | Reject rate per call type |
+| Review | `gtgen review-sample` | Stratified CSV with the SME form columns |
+| Publish | `gtgen export` | Train, validation and test CSVs, plus `manifest.json` |
 
-The manifest records the prompt version, model ID, schema version, check thresholds and counts per call type. Any label can be traced back to the exact prompt that made it.
+Every label row records the prompt version (a hash of the prompts and examples), the models used and the token usage. The manifest lists the prompt versions, models and counts per split, so any label can be traced back to the exact prompt that made it.
 
 ### Cost estimate
 
-Rough figures at Anthropic list prices; Bedrock prices differ, and the pilot measures real token counts.
+Cost depends on the GPT models chosen and their prices, so this gives token counts per call: multiply by your provider's price sheet. The pilot measures real counts, and `gtgen label` records token usage on every row.
 
-| Item | Assumption per call | Approx. cost per call |
-| --- | --- | --- |
-| Labeller, Opus 5.5 | 4k transcript tokens in, 15k cached prompt, 3.5k out including thinking | $0.09 |
-| Retries | 30% of calls regenerated once | $0.03 |
-| Judge, Sonnet 5.5 | 5k in, 1k out | $0.02 |
-| Closed-set pass, Sonnet 5.5 | 4k in, 0.5k out | $0.015 |
-| **Total** |  | **about $0.15** |
+| Item | Assumption per call |
+| --- | --- |
+| Labeller | 4k transcript tokens plus about 15k system-prompt tokens in (cacheable); about 3.5k out, including reasoning |
+| Retries | About 30% of calls regenerated once |
+| Judge | About 5k in, 1k out |
+| Closed-set pass | About 4k in, 0.5k out |
 
-For about 35k calls that is roughly $5,000, or about $2,500 with batch pricing. The SME review time is likely the larger cost: about 1,000 calls at 5 to 10 minutes each.
+Multiply by about 35k calls for the full run. A provider batch API would roughly halve the model cost, but the pipeline does not use one yet. The SME review time is likely the larger cost: about 1,000 calls at 5 to 10 minutes each.
 
 ## Rollout and open decisions
 
@@ -328,7 +327,7 @@ Work runs in five phases, and each ends at a gate. No phase starts before the pr
 
 1. **Spec and tooling.** Freeze the section 4 spec with SMEs, fix the preprocessing, build the prepare, check and render scripts, and pick the 300 prompt-dev calls. *Gate: SMEs sign off the spec and 8 worked examples.*
 2. **Prompt and judge calibration.** Iterate the labeller prompt on prompt dev; calibrate the judge against SME sentence marks. *Gate: judge catches ≥ 90% of SME-found unsupported sentences.*
-3. **Pilot.** 200 stratified calls, labeller Opus 5.5 vs Sonnet 5.5, effort high vs medium, hint vs no hint. *Gate: one configuration meets every section 8 target.*
+3. **Pilot.** 200 stratified calls, two GPT labeller models, effort high vs medium, hint vs no hint. *Gate: one configuration meets every section 8 target.*
 4. **Full run.** Label the window in batches of about 5,000, with the audit sample from each batch reviewed before the next starts. *Gate: audit error rate stays within targets; reject rate ≤ 15% per call type.*
 5. **Gold set and release.** 500 double-reviewed Test calls; publish the versioned dataset and manifest. *Gate: inter-reviewer agreement ≥ 85%.*
 
