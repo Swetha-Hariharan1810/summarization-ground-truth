@@ -95,7 +95,6 @@ Each output row also records the prompt version (a hash of the prompts and examp
 ## Known limits
 
 - **Speech-recognition errors in serials are not repaired.** If ASR wrote "and l f" for "n l f", the serial check fails rather than guess. The labeller is told to leave such IDs out.
-- **Masked identifiers.** The service preprocessing strips brackets, so `[NAME]` reaches the model as `name`. Masking must be applied identically before training and serving.
 - **No batch API.** Calls are made synchronously with `MAX_CONCURRENCY` in parallel. A provider batch API would cut the cost roughly in half.
 
 ## Tests

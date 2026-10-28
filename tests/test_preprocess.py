@@ -13,7 +13,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 RAW = """Agent:  neuromodulation this is sam can i get your first and last name and a phone number please
-Caller:  sure it's [NAME] [PHONE]
+Caller:  sure it's alex doe five five five one two three four
 Agent:  thank you and what is the reason for your call today
 Caller:  my controller says no device found when i try to charge
 Caller:  it started two days ago
